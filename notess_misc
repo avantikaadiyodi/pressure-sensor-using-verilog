@@ -1,0 +1,326 @@
+module sar_adc (
+    input wire clk,        // Clock signal
+    input wire reset,      // Reset signal
+    input wire start,      // Start conversion signal
+    input wire [3:0] analog_in, // Analog input (simplified as 4-bit digital input)
+    output reg [3:0] digital_out, // Digital output
+    output reg done        // Conversion done signal
+ );
+    // State encoding
+    localparam IDLE = 2'b00;
+    localparam SAMPLE = 2'b01;
+    localparam CONVERT = 2'b10;
+    localparam DONE = 2'b11;
+
+    reg [1:0] state;
+    reg [3:0] dac; // Digital-to-Analog Converter value
+    reg [1:0] bit_pos;
+
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            state <= IDLE;
+            digital_out <= 4'b0;
+            done <= 0;
+            dac <= 4'b0;
+            bit_pos <= 2'b0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    if (start) begin
+                        state <= SAMPLE;
+                        dac <= 4'b1000; // Start with MSB
+                        bit_pos <= 2'b11; // MSB position
+                        done <= 0;
+                    end
+                end
+                SAMPLE: begin
+                    state <= CONVERT;
+                end
+                CONVERT: begin
+                    if (analog_in >= dac) begin
+                        digital_out[bit_pos] <= 1;
+                    end else begin
+                        digital_out[bit_pos] <= 0;
+                        dac <= dac - (4'b1 << bit_pos); // Subtract if MSB is 0
+                    end
+                    if (bit_pos > 0) begin
+                        bit_pos <= bit_pos - 1;
+                        dac <= dac + (4'b1 << (bit_pos - 1));
+                    end else begin
+                        state <= DONE;
+                    end
+                end
+                DONE: begin
+                    done <= 1;
+                    state <= IDLE;
+                end
+            endcase
+        end
+    end
+endmodule
+
+module tb_sar_adc;
+
+    // Inputs
+    reg clk;
+    reg reset;
+    reg start;
+    reg [3:0] analog_in;
+
+    // Outputs
+    wire [3:0] digital_out;
+    wire done;
+
+    // Instantiate the Unit Under Test (UUT)
+    sar_adc uut (
+        .clk(clk),
+        .reset(reset),
+        .start(start),
+        .analog_in(analog_in),
+        .digital_out(digital_out),
+        .done(done)
+    );
+
+    // Clock generation
+    initial begin
+        clk = 0;
+        forever #5 clk = ~clk; // 10ns clock period
+    end
+
+    // Test sequence
+    initial begin
+        // Initialize inputs
+        reset = 1;
+        start = 0;
+        analog_in = 4'b0;
+        #20;
+        reset = 0;
+        #10;
+
+        // Test case 1: Analog input = 8
+        analog_in = 4'b1000;
+        start = 1;
+        #10;
+        start = 0;
+        wait (done);
+        #20;
+
+        // Test case 2: Analog input = 12
+        analog_in = 4'b1100;
+        start = 1;
+        #10;
+        start = 0;
+        wait (done);
+        #20;
+
+        // Finish simulation
+        $finish;
+    end
+
+    // Monitor signals
+    initial begin
+        $monitor("At time %t, analog_in = %b, digital_out = %b, done = %b", $time, analog_in, digital_out, done);
+    end
+
+    // Dumpfile and Dumpvars
+    initial begin
+        $dumpfile("sar_adc.vcd"); // Name of the VCD file
+        $dumpvars(0, tb_sar_adc); // Dump all variables
+    end
+endmodule
+
+module sar_adc (
+    input wire clk,
+    input wire reset,
+    input wire start,
+    input wire [11:0] analog_in, // 12-bit analog input
+    output reg [7:0] digital_out,
+    output reg done
+    );
+    localparam IDLE = 2'b00;
+    localparam SAMPLE = 2'b01;
+    localparam CONVERT = 2'b10;
+    localparam DONE = 2'b11;
+
+    reg [1:0] state;
+    reg [11:0] dac;
+    reg [3:0] bit_pos;
+
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            state <= IDLE;
+            digital_out <= 8'b0;
+            done <= 0;
+            dac <= 12'b0;
+            bit_pos <= 4'b0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    if (start) begin
+                        state <= SAMPLE;
+                        dac <= 12'b100000000000; // Start with MSB
+                        bit_pos <= 4'b1011; // MSB position (12-1)
+                        done <= 0;
+                    end
+                end
+                SAMPLE: begin
+                    state <= CONVERT;
+                end
+                CONVERT: begin
+                    if (analog_in >= dac) begin
+                        digital_out[bit_pos] <= 1;
+                    end else begin
+                        digital_out[bit_pos] <= 0;
+                        dac <= dac - (12'b1 << bit_pos);
+                    end
+                    if (bit_pos > 0) begin
+                        bit_pos <= bit_pos - 1;
+                        dac <= dac + (12'b1 << (bit_pos - 1));
+                    end else begin
+                        state <= DONE;
+                    end
+                end
+                DONE: begin
+                    done <= 1;
+                    state <= IDLE;
+                end
+            endcase
+        end
+    end
+endmodule
+
+module adc_to_bcd (
+    input wire clk,
+    input wire reset,
+    input wire [7:0] adc_value, // 8-bit ADC value
+    output reg [7:0] bcd // BCD output (2 digits, max value 100)
+    );
+    reg [3:0] tens; // Tens place of BCD
+    reg [3:0] ones; // Ones place of BCD
+
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            tens <= 4'b0;
+            ones <= 4'b0;
+            bcd <= 8'b0;
+        end else begin
+            tens <= adc_value / 10;
+            ones <= adc_value % 10;
+            bcd <= {tens, ones};
+        end
+    end
+endmodule
+
+module integrated_sensor_soc (
+    input wire clk,
+    input wire reset,
+    input wire [9:0] ecg_in,
+    input wire [9:0] spo2_in,
+    input wire [9:0] accel_in_x,
+    input wire [9:0] accel_in_y,
+    input wire [9:0] accel_in_z,
+    output wire ble_tx,
+    input wire ble_rx
+    );
+    wire [7:0] ecg_data;
+    wire [7:0] spo2_data;
+    wire [7:0] accel_data_x_out;
+    wire [7:0] accel_data_y_out;
+    wire [7:0] accel_data_z_out;
+
+    // ECG Sensor
+    ecg_sensor ecg (
+        .clk(clk),
+        .reset(reset),
+        .ecg_in(ecg_in),
+        .ecg_out(ecg_data)
+    );
+
+    // SpO2 Sensor
+    spo2_sensor spo2 (
+        .clk(clk),
+        .reset(reset),
+        .spo2_in(spo2_in),
+        .spo2_out(spo2_data)
+    );
+
+    // Accelerometer
+    accelerometer accel (
+        .clk(clk),
+        .reset(reset),
+        .accel_in_x(accel_in_x),
+        .accel_in_y(accel_in_y),
+        .accel_in_z(accel_in_z),
+        .accel_out_x(accel_data_x_out),
+        .accel_out_y(accel_data_y_out),
+        .accel_out_z(accel_data_z_out)
+    );
+
+    // BLE Module
+    ble_module ble (
+        .clk(clk),
+        .reset(reset),
+        .ecg_data(ecg_data),
+        .spo2_data(spo2_data),
+        .accel_data_x(accel_data_x_out),
+        .accel_data_y(accel_data_y_out),
+        .accel_data_z(accel_data_z_out),
+        .ble_tx(ble_tx),
+        .ble_rx(ble_rx)
+    );
+endmodule
+
+module ble_module (
+    input wire clk,
+    input wire reset,
+    input wire [7:0] adc_data,
+    output wire ble_tx,
+    input wire ble_rx
+ );
+    // BLE interface implementation (simplified pseudo-code)
+    // For a real implementation, use a BLE stack provided by a BLE module manufacturer
+    // such as Nordic Semiconductor or Texas Instruments.
+
+    // Example data packet formation
+    reg [7:0] data_packet;
+    always @(posedge clk or posedge reset) begin
+        if (reset)
+            data_packet <= 8'b0;
+        else
+            data_packet <= adc_data; // Placeholder for actual transmission
+    end
+
+    // Transmit data_packet over BLE (simplified)
+    assign ble_tx = data_packet; // Replace with actual BLE transmission logic
+endmodule
+
+module pressure_sensor_soc (
+    input wire clk,
+    input wire reset,
+    input wire [9:0] analog_in, // Analog voltage input from pressure sensor (10-bit)
+    output wire ble_tx,
+    input wire ble_rx
+ );
+    wire [7:0] adc_data;
+    wire adc_done;
+
+    // Instantiate SAR ADC
+    sar_adc adc (
+        .clk(clk),
+        .reset(reset),
+        .start(1'b1),  // Continuously start conversion for simplicity
+        .analog_in(analog_in),
+        .digital_out(adc_data),
+        .done(adc_done)
+    );
+
+    // Instantiate BLE Module
+    ble_module ble (
+        .clk(clk),
+        .reset(reset),
+        .adc_data(adc_data),
+        .ble_tx(ble_tx),
+        .ble_rx(ble_rx)
+    );
+
+endmodule
