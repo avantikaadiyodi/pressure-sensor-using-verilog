@@ -5,13 +5,13 @@ module testbench;
     reg clk;
     reg reset;
     wire q, q_;
-
+	
     // Instantiate the D flip-flop
     d_flip_flop uut (
         .d(d),
         .clk(clk),
         .reset(reset),
-        .q(q)
+      	.q(q),
         .q_(q_)
     );
 
@@ -29,16 +29,14 @@ module testbench;
         #10; // wait for 10 units of time (10ns) before moving to next line
         
         // Release reset
-        reset = 0;
-        #10;
+        reset = 0; #10;
         
-        // Apply test vectors
-        d = 1;
-        #10;
-        d = 0;
-        #10;
-        d = 1;
-        #10;
+      	// Apply test vectors
+      	integer i;
+      	for (i = 1; i < 5; i = i + 1) begin
+          	d = i % 2;
+         	#10;
+    	end
         
         // Finish simulation
         $finish;
@@ -46,6 +44,13 @@ module testbench;
 
     // Monitor signals
     initial begin
-        $monitor("At time %t, d = %b, clk = %b, reset = %b, q = %b", $time, d, clk, reset, q);
+      $monitor("At time %t, d = %b, clk = %b, reset = %b, q = %b, q_ = %b", $time, d, clk, reset, q, q_);
     end
+  
+  	// Dumpfile and Dumpvars
+	initial begin
+  		$dumpfile("waveform.vcd"); // Name of the VCD file
+  		$dumpvars(0, testbench); // Dump all variables
+  
+	end
 endmodule
